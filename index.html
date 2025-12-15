@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go WASM WebGL Drawing App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .tool-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .tool-group label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-mode {
+            background: #6c757d;
+            color: white;
+            padding: 8px 16px;
+        }
+
+        .btn-mode.active {
+            background: #667eea;
+        }
+
+        input[type="color"] {
+            width: 50px;
+            height: 40px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        input[type="range"] {
+            width: 120px;
+        }
+
+        .canvas-container {
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            background: #f8f9fa;
+        }
+
+        canvas {
+            border: 3px solid #dee2e6;
+            border-radius: 10px;
+            cursor: crosshair;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            background: white;
+        }
+
+        .info {
+            padding: 15px 20px;
+            background: #e7f3ff;
+            border-top: 2px solid #b3d9ff;
+            color: #004085;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .toolbar {
+                justify-content: center;
+            }
+            
+            canvas {
+                max-width: 100%;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Go WASM Drawing App</h1>
+            <p>Aplikasi menggambar dengan Go WebAssembly & Canvas 2D</p>
+        </div>
+
+        <div class="toolbar">
+            <div class="tool-group">
+                <button onclick="wasmUndo()" class="btn-primary">↶ Undo</button>
+                <button onclick="wasmRedo()" class="btn-primary">↷ Redo</button>
+                <button onclick="wasmClear()" class="btn-danger">🗑️ Clear</button>
+            </div>
+
+            <div class="tool-group">
+                <label>Mode:</label>
+                <button onclick="setMode('draw')" class="btn-mode active" id="btn-draw">✏️ Draw</button>
+                <button onclick="setMode('line')" class="btn-mode" id="btn-line">📏 Line</button>
+                <button onclick="setMode('rect')" class="btn-mode" id="btn-rect">▭ Rect</button>
+                <button onclick="setMode('circle')" class="btn-mode" id="btn-circle">⭕ Circle</button>
+            </div>
+
+            <div class="tool-group">
+                <label>Warna:</label>
+                <input type="color" id="colorPicker" value="#000000" onchange="wasmSetColor(this.value)">
+            </div>
+
+            <div class="tool-group">
+                <label>Ketebalan:</label>
+                <input type="range" id="widthSlider" min="1" max="20" value="2" 
+                       oninput="wasmSetWidth(parseFloat(this.value)); document.getElementById('widthValue').textContent = this.value">
+                <span id="widthValue" style="font-weight: 600; color: #667eea;">2</span>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="drawingCanvas"></canvas>
+        </div>
+
+        <div class="info">
+            💡 <strong>Tips:</strong> Pilih mode, warna, dan ketebalan garis. Klik dan drag untuk menggambar. 
+            Gunakan Undo/Redo untuk mengubah gambar Anda!
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            Loading Go WASM module...
+        </div>
+    </div>
+
+    <script src="wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        
+        function setMode(mode) {
+            wasmSetMode(mode);
+            
+            // Update button states
+            document.querySelectorAll('.btn-mode').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('btn-' + mode).classList.add('active');
+        }
+
+        WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
+            .then((result) => {
+                go.run(result.instance);
+                initWasmDrawing();
+                document.getElementById('loading').style.display = 'none';
+            })
+            .catch((err) => {
+                console.error("Error loading WASM:", err);
+                document.getElementById('loading').innerHTML = 
+                    '<p style="color: #dc3545;">❌ Error loading WASM module. Check console for details.</p>';
+            });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') {
+                    e.preventDefault();
+                    wasmUndo();
+                } else if (e.key === 'y') {
+                    e.preventDefault();
+                    wasmRedo();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
